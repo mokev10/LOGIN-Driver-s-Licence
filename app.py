@@ -2,7 +2,7 @@
 import streamlit as st
 import re
 
-st.set_page_config(page_title="TYNORAH - Sign Up", page_icon="🌀", layout="centered")
+st.set_page_config(page_title="TYNORAH - Sign Up", page_icon="https://img.icons8.com/external-inipagistudio-mixed-inipagistudio/24/external-ai-web-programmer-inipagistudio-mixed-inipagistudio.png", layout="centered")
 
 # --- Styles CSS pour la carte et le bouton gradient ---
 st.markdown(

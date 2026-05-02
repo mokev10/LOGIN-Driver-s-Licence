@@ -3,44 +3,16 @@ import streamlit as st
 import re
 import sqlite3
 from hashlib import sha256
+import streamlit.components.v1 as components
 
 TARGET_URL = "https://driver-license.streamlit.app/"
 
-st.set_page_config(page_title="TYNORAH - Auth", page_icon="🌀", layout="centered")
+st.set_page_config(page_title="TYNORAH - Auth", layout="centered")
 
-# Minimal CSS (kept concise)
-st.markdown(
-    """
-    <style>
-    :root{--accent-a:#7b61ff;--accent-b:#5ec8ff;--muted:#7b7f8a;}
-    .stApp{font-family:Inter,Roboto,Arial;}
-    .card{max-width:560px;margin:36px auto;padding:24px;border-radius:14px;background:#fff;box-shadow:0 12px 30px rgba(30,35,90,0.06);}
-    .brand{font-weight:800;font-size:26px;color:#111;}
-    .subtitle{color:var(--muted);margin-bottom:14px;}
-    .gradient-btn{background:linear-gradient(90deg,var(--accent-a),var(--accent-b));color:#fff;padding:10px;border-radius:10px;border:none;width:100%;font-weight:700;cursor:pointer;}
-    .pw-meter{height:10px;border-radius:8px;background:#f2f6ff;overflow:hidden;margin-top:8px;}
-    .pw-meter>div{height:100%;border-radius:8px;transition:width .35s;}
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+# --- Minimal UI ---
+st.markdown("<div style='max-width:640px;margin:28px auto;padding:20px;border-radius:12px;background:#fff;box-shadow:0 8px 30px rgba(0,0,0,0.04)'><h2>TYNORAH</h2><p style='color:#666'>Sign up / Login demo</p></div>", unsafe_allow_html=True)
 
-# Helpers
-def is_valid_email(addr: str) -> bool:
-    return bool(re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", (addr or "").strip()))
-
-def password_strength(pw: str):
-    score = 0
-    if len(pw) >= 8: score += 1
-    if re.search(r"[A-Z]", pw) and re.search(r"[a-z]", pw): score += 1
-    if re.search(r"\d", pw): score += 1
-    if re.search(r"[^\w\s]", pw): score += 1
-    labels = ["Très faible","Faible","Moyen","Fort","Très fort"]
-    colors = ["#ff6b6b","#ff9f6b","#ffd36b","#7be36b","#2ee6a7"]
-    widths = ["6%","28%","56%","80%","100%"]
-    return score, labels[score], colors[score], widths[score]
-
-# Simple SQLite for demo
+# --- Simple DB ---
 DB_PATH = "users.db"
 def init_db():
     conn = sqlite3.connect(DB_PATH)
@@ -75,62 +47,66 @@ def check_credentials(email: str, password: str):
 
 init_db()
 
-# UI
-st.markdown('<div class="card">', unsafe_allow_html=True)
-st.markdown('<div class="brand">TYNORAH</div>', unsafe_allow_html=True)
-st.markdown('<div class="subtitle">Inscription / Connexion</div>', unsafe_allow_html=True)
+# --- Helpers ---
+def is_valid_email(addr: str) -> bool:
+    return bool(re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", (addr or "").strip()))
 
-tab = st.tabs(["Sign Up", "Login"])
+def do_redirect_js(url: str, new_tab: bool = False) -> None:
+    """Try redirect using components.html (works better than st.markdown for JS)."""
+    if new_tab:
+        js = f"<script>window.open('{url}', '_blank');</script>"
+    else:
+        js = f"<script>window.location.href = '{url}';</script>"
+    # components.html executes the JS in the browser context
+    components.html(js, height=0)
 
-# --- Sign Up tab ---
-with tab[0]:
-    with st.form("signup_form"):
-        st.markdown("**Email**")
-        email = st.text_input("", placeholder="you@example.com", key="su_email")
-        st.markdown("**Password**")
-        password = st.text_input("", type="password", placeholder="8 caractères minimum", key="su_pw")
-        st.markdown("**Confirm password**")
-        confirm = st.text_input("", type="password", placeholder="Re-saisir", key="su_confirm")
+def do_meta_refresh(url: str, delay: int = 1) -> None:
+    """Fallback: meta refresh (some CSPs still allow it)."""
+    html = f"""<meta http-equiv="refresh" content="{delay};url={url}">"""
+    components.html(html, height=0)
+
+# --- Auth UI (signup + login) ---
+tabs = st.tabs(["Sign Up", "Login"])
+
+with tabs[0]:
+    with st.form("signup"):
+        email = st.text_input("Email", key="su_email")
+        pw = st.text_input("Password", type="password", key="su_pw")
+        pwc = st.text_input("Confirm", type="password", key="su_confirm")
         agree = st.checkbox("J'accepte les conditions", key="su_agree")
         submitted = st.form_submit_button("S'INSCRIRE")
-
-        # visual meter
-        score, label, color, width = password_strength(password or "")
-        st.markdown(f'<div style="display:flex;justify-content:space-between;"><div style="color:#6b6b7a">Force</div><div style="font-weight:700;color:{color}">{label}</div></div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="pw-meter"><div style="width:{width};background:{color}"></div></div>', unsafe_allow_html=True)
-
     if submitted:
-        errors = []
-        if not is_valid_email(email):
-            errors.append("Email invalide.")
-        if not password or len(password) < 8:
-            errors.append("Mot de passe trop court.")
-        if password != confirm:
-            errors.append("Les mots de passe ne correspondent pas.")
-        if not agree:
-            errors.append("Accepte les conditions.")
-        if errors:
-            for e in errors:
-                st.error(e)
+        errs = []
+        if not is_valid_email(email): errs.append("Email invalide.")
+        if not pw or len(pw) < 8: errs.append("Mot de passe trop court.")
+        if pw != pwc: errs.append("Les mots de passe ne correspondent pas.")
+        if not agree: errs.append("Accepte les conditions.")
+        if errs:
+            for e in errs: st.error(e)
         else:
-            ok, msg = save_user(email.strip(), password)
+            ok, msg = save_user(email.strip(), pw)
             if ok:
                 st.success(msg)
-                st.info("Redirection en cours...")
-                # JS redirect to external URL
-                st.markdown(f"<script>window.location.href = '{TARGET_URL}';</script>", unsafe_allow_html=True)
+                st.info("Tentative de redirection vers la page externe...")
+                # 1) Try components JS redirect (same tab)
+                try:
+                    do_redirect_js(TARGET_URL, new_tab=False)
+                    st.write("Redirection JS envoyée (même onglet). Si rien ne se passe, voir les alternatives ci‑dessous.")
+                except Exception as e:
+                    st.warning("Impossible d'exécuter JS via components: " + str(e))
+                    # 2) Fallback meta refresh
+                    do_meta_refresh(TARGET_URL, delay=1)
+                    st.write("Fallback meta refresh inséré.")
+                # 3) Always show clickable link as last resort
+                st.markdown(f"[Si la redirection ne fonctionne pas, clique ici pour ouvrir la page]({TARGET_URL})")
             else:
                 st.error(msg)
 
-# --- Login tab ---
-with tab[1]:
-    with st.form("login_form"):
-        st.markdown("**Email**")
-        le = st.text_input("", placeholder="you@example.com", key="li_email")
-        st.markdown("**Password**")
-        lpw = st.text_input("", type="password", placeholder="Ton mot de passe", key="li_pw")
+with tabs[1]:
+    with st.form("login"):
+        le = st.text_input("Email", key="li_email")
+        lpw = st.text_input("Password", type="password", key="li_pw")
         lsub = st.form_submit_button("SE CONNECTER")
-
     if lsub:
         if not is_valid_email(le):
             st.error("Email invalide.")
@@ -138,9 +114,22 @@ with tab[1]:
             st.error("Mot de passe requis.")
         else:
             if check_credentials(le.strip(), lpw):
-                st.success("Connexion réussie. Redirection...")
-                st.markdown(f"<script>window.location.href = '{TARGET_URL}';</script>", unsafe_allow_html=True)
+                st.success("Connexion réussie. Tentative de redirection...")
+                # Try JS redirect in new tab first (less likely blocked)
+                try:
+                    do_redirect_js(TARGET_URL, new_tab=True)
+                    st.write("Tentative d'ouverture dans un nouvel onglet envoyée.")
+                except Exception:
+                    do_meta_refresh(TARGET_URL, delay=1)
+                    st.write("Fallback meta refresh inséré.")
+                st.markdown(f"[Si la redirection ne fonctionne pas, clique ici]({TARGET_URL})")
             else:
                 st.error("Identifiants incorrects.")
 
-st.markdown('</div>', unsafe_allow_html=True)
+# --- Debugging hints visible à l'utilisateur ---
+st.markdown("---")
+st.markdown("**Si la redirection bloque encore, vérifie :**")
+st.markdown("- Console du navigateur (F12) pour voir les erreurs JS ou les règles CSP.")
+st.markdown("- Si l'app est affichée dans un iframe, la navigation top-level peut être bloquée.")
+st.markdown("- Les bloqueurs de pop-ups peuvent empêcher l'ouverture dans un nouvel onglet.")
+st.markdown("- Essaie d'ouvrir l'app dans un navigateur différent ou en mode incognito.")
